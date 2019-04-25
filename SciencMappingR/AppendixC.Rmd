@@ -1,0 +1,663 @@
+---
+title: "SCIENCE MAPPING"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+    theme: cosmo
+---
+
+```{r setup, echo=FALSE ,message=FALSE, warning=FALSE}
+# Loading libraries
+library(flexdashboard)
+library(bibliometrix)
+library(tidyverse)
+library(tidytext)
+library(countrycode)
+library(readxl)
+library(xlsx)
+library(purrr)
+library(janitor) # Converts a number to a date
+library(plotly)
+library(DT)
+library(stringr)
+library(rebus)
+```
+
+
+
+```{r Set up,  echo=FALSE ,message=FALSE, warning=FALSE, include=FALSE}
+  ######### SET UP ##############
+
+  #Loading data
+  setwd("C:/Users/Francisco/Documents/Doctorado/PhD_Proposal/ScienceMapping")
+ 
+  # Reading the final Dataframe
+  finalDataFrame<-read_excel("ISB_WebOfScience.xlsx",sheet=3)
+  # Giving format to the final Dataframe
+  finalDataFrame <-finalDataFrame %>%  select(-REFERENCES) %>% 
+                  mutate(CLUSTER=paste("Cluster ",CLUSTER))
+  
+  # Data formatting
+  
+  finalDataFrame <-finalDataFrame %>% mutate(SOURCE=str_replace_all(SOURCE,"\\\\",""))
+  finalDataFrame <-finalDataFrame %>% mutate(SOURCE= str_to_title(SOURCE, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(SOURCE_ABBREVIATED= str_to_title(SOURCE_ABBREVIATED, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(TILTE= str_to_title(TILTE, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(AUTHOR= str_to_title(AUTHOR, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(CITATION= str_to_title(CITATION, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(ABSTRACT= str_to_title(ABSTRACT, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(AUTHOR_KEYWORDS= str_to_title(AUTHOR_KEYWORDS, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(WEB_OF_SCIENCE_KEYWORDS= str_to_title(WEB_OF_SCIENCE_KEYWORDS, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(LANGUAGE= str_to_title(LANGUAGE, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(DOCUMENT_TYPE= str_to_title(DOCUMENT_TYPE, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(PUBLISHER= str_to_title(PUBLISHER, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(RESEARCH_AREAS= str_to_title(RESEARCH_AREAS, locale = "en"))
+  finalDataFrame <-finalDataFrame %>% mutate(AFFILIATION= str_to_title(AFFILIATION, locale = "en"))
+  
+  ######### SET UP ##############
+```
+
+
+```{r Functions ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+ ######### FUNCTIONS ##############
+  
+  #Function: Default 25 character target width.
+  swr <- function(string, nwrap=25) {
+        paste(strwrap(string, width=nwrap), collapse="\n")
+  }
+  
+  # Function: get Basic Operatio such as Min, Max
+  getBasicOperation <- function(field, operation) {
+        
+    if(str_to_upper(operation)=="MIN"){
+      result <-min(field)
+    }  
+    if(str_to_upper(operation)=="MAX"){
+      result <-max(field)
+    }
+    
+    return(result %>% as.numeric())
+    
+  }
+  
+  # Function: print Table
+  printTable <- function(df){
+
+  df %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  ))
+    
+  }
+  
+  
+  # Function: Adds an id number to the dataframe
+  get_index <- function(df){
+  
+    df %>% mutate(ID_TABLE=row_number())
+  }
+  
+  # Function: Print the overall graph
+  printGraphOverall <- function(df,graph_type,group,minData,maxData,title_graph,x_desc,y_desc){
+  
+  # Top 10 auhtors o co-authors   
+  if(group==""){
+    df <- df %>% head(20)  
+  }    
+  
+  if(graph_type=="CITATION"){
+    result<-df %>% ggplot(aes(x=reorder(CITATION,TOTAL),y=TOTAL))
+  }  
+    
+  if(graph_type=="SOURCE"){
+    result<-df %>% ggplot(aes(x=reorder(SOURCE,TOTAL),y=TOTAL))
+  }
+  
+  if(graph_type=="FIRST AUTHOR"){
+    result<-df %>% ggplot(aes(x=reorder(AUTHORS,TOTAL),y=TOTAL))
+  }
+            result<- result+ geom_col(fill="light blue")+ 
+                     geom_text(aes(label=TOTAL), vjust=-0.20, size=3)+
+                     coord_flip()
+                   
+            
+  if(group=="CLUSTER"){
+    result<- result+ facet_wrap(.~ CLUSTER,scales="free_y")
+  }
+
+    result<- result+theme_bw()+
+                     theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2)) +
+                     labs(title=title_graph,x =x_desc, y = y_desc)
+            
+  
+  return(result)
+  
+  }
+  
+  
+# Function: Print the overall graph
+  printGraphYear <- function(df,graph_type,group,minData,maxData,title_graph,x_desc,y_desc){
+   
+  result<-df%>% ggplot(aes(x=reorder(PUBLICATION_YEAR,TOTAL),y=TOTAL))+
+           geom_point(aes(x=PUBLICATION_YEAR,y=TOTAL),color="red")+
+           theme_bw()
+  
+  if(graph_type=="PUBLICATION YEAR"){
+     result<-result+  geom_line( aes(x=PUBLICATION_YEAR,y=TOTAL,color="blue"))
+  }
+  
+    
+   if(graph_type=="SOURCE"){
+     result <- result +geom_text(aes(x=PUBLICATION_YEAR,y=TOTAL,group=1,label =SOURCES),position =   position_stack(vjust=.95),size=1.5,angle = 45)
+  }
+  
+  if(graph_type=="FIRST AUTHOR"){
+     result <- result +geom_text(aes(x=PUBLICATION_YEAR,y=TOTAL,group=1,label =AUTHOR),position =   position_stack(vjust=.95),size=1.5,angle = 45)
+  }
+  
+  result <- result+
+            scale_x_continuous(breaks = seq(minData,maxData, by = 2))+
+            theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+            labs(title=title_graph,x =x_desc, y = y_desc)
+  
+  if(group=="CLUSTER"){
+    result<- result+ facet_wrap(.~ CLUSTER,scales="free_y")
+  }
+  
+   return(result)     
+  
+  }
+  
+  ######### FUNCTIONS ##############
+
+```
+
+
+
+```{r Data Wrangling ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+ ######### DATA WRANGLING ############## 
+  
+  # Vectorizing the \n
+  swr <- Vectorize(swr)
+  
+  # Creating a line break in the Source 
+  finalDataFrame$SOURCE<- swr(finalDataFrame$SOURCE)
+  
+ 
+  # Geting max and min of Publication Year
+  minYear<- getBasicOperation(finalDataFrame$PUBLICATION_YEAR,"MIN")
+  maxYear<- getBasicOperation(finalDataFrame$PUBLICATION_YEAR,"MAX")
+  
+  # Author
+  author <- finalDataFrame %>% 
+          select(PAPER_ID,AUTHOR,SOURCE,PUBLICATION_YEAR,CLUSTER) %>%
+          unnest_tokens(AUTHORS,AUTHOR,token = stringr::str_split, 
+                        pattern = ";",to_lower = FALSE) 
+  # nesting Author data
+  by_author <-author %>% group_by(PAPER_ID) %>% nest
+  
+  by_author <- by_author %>%   
+                     mutate(data = map(.f = get_index, .x = data))%>%
+                     unnest(data) %>% 
+                     mutate(
+                            AUTHOR_TYPE=if_else(ID_TABLE==1,"AUTHOR","CO-AUTHOR"),
+                            PAPER_SUB_ID=paste(PAPER_ID,ID_TABLE, sep="_"))
+  
+  
+information <- finalDataFrame %>% select(CITATION, CLUSTER,TIMES_CITED,PUBLICATION_YEAR)
+
+ 
+   ######### DATA WRANGLING ############## 
+ 
+```
+
+
+Raw data{data-icon="fa-area-chart" data-navmenu=Information  }
+=====================================  
+
+Column 
+-------------------------------------
+
+### MAIN TABLE: RAW DATA
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+printTable(finalDataFrame)
+```
+
+
+
+Overall{data-icon="fa-area-chart" data-navmenu=Information  }
+=====================================  
+
+
+Column {.tabset data-width=500}
+-------------------------------------
+
+
+### MOST CITED ARTICLE: OVERALL (TOP 20) 
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+mostCited<-information %>% select(CITATION,TIMES_CITED) %>% arrange(desc(TIMES_CITED)) %>% 
+                           rename(TOTAL=TIMES_CITED) %>% filter(!is.na(TOTAL))  
+
+# Geting max and min of Sources
+minSource<- getBasicOperation(mostCited$TOTAL,"MIN")
+maxSource<- getBasicOperation(mostCited$TOTAL,"MAX")
+
+#Printing the graph
+p<-printGraphOverall(mostCited,"CITATION","",minSource,maxSource," TOP 20 Most cited:  Overall","", "Ammount of papers")
+ggplotly(p)
+
+```
+
+
+### MOST CITED ARTICLE: By CLUSTER (TOP 20)
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+mostCited<-information %>% select(CITATION,TIMES_CITED,CLUSTER) %>% arrange(CLUSTER,desc(TIMES_CITED)) %>% rename(TOTAL=TIMES_CITED) %>% filter(!is.na(TOTAL))  
+
+# Geting max and min of Sources
+minSource<- getBasicOperation(mostCited$TOTAL,"MIN")
+maxSource<- getBasicOperation(mostCited$TOTAL,"MAX")
+
+#Printing the graph
+p<-printGraphOverall(mostCited,"CITATION","CLUSTER",minSource,maxSource," TOP 20 Most cited: by Cluster","", "Ammount of papers")
+
+ggplotly(p)
+
+```
+
+
+### ARTICLES: BY TIME
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+articleByTime<-information %>% select(CITATION,PUBLICATION_YEAR) %>%
+                               count(PUBLICATION_YEAR) %>% rename(TOTAL=n) %>% 
+                               arrange(PUBLICATION_YEAR) 
+
+
+# Geting max and min of Sources
+minSource<- getBasicOperation(articleByTime$PUBLICATION_YEAR,"MIN")
+maxSource<- getBasicOperation(articleByTime$PUBLICATION_YEAR,"MAX")
+#Printing the graph
+
+
+#Printing the graph
+p<-printGraphYear(articleByTime,"PUBLICATION YEAR","",minSource,maxSource,"Articles by Year","", "Ammount of Sources")
+ggplotly(p)
+
+
+
+```
+
+
+### ARTICLES: BY TIME AND CLUSTER
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+articleByTime<-information %>% select(CITATION,PUBLICATION_YEAR,CLUSTER) %>%
+                               count(PUBLICATION_YEAR,CLUSTER) %>% rename(TOTAL=n) %>% 
+                               arrange(PUBLICATION_YEAR) 
+
+
+# Geting max and min of Sources
+minSource<- getBasicOperation(articleByTime$PUBLICATION_YEAR,"MIN")
+maxSource<- getBasicOperation(articleByTime$PUBLICATION_YEAR,"MAX")
+#Printing the graph
+
+
+#Printing the graph
+p<-printGraphYear(articleByTime,"PUBLICATION YEAR","CLUSTER",minSource,maxSource,"Articles by Year and Cluster","", "Ammount of Sources")
+ggplotly(p)
+
+
+
+```
+
+
+
+### MOST CITED ARTICLE: TABLE
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+printTable(information %>% arrange(CLUSTER,PUBLICATION_YEAR,desc(TIMES_CITED)))
+
+```
+
+
+
+
+
+Overall{data-icon="fa-book" data-navmenu=SOURCE  }
+=====================================  
+
+Column 
+-------------------------------------
+
+### SOURCE OVERALL: GRAPHIC (TOP 20)
+
+```{r ,   echo=FALSE ,message=FALSE, warning=FALSE}
+# Total Sources
+totalSources<-finalDataFrame %>% select(SOURCE) %>%count(SOURCE) %>% 
+                   rename(TOTAL=n) %>% arrange(desc(TOTAL))
+# Geting max and min of Sources
+minSource<- getBasicOperation(totalSources$TOTAL,"MIN")
+maxSource<- getBasicOperation(totalSources$TOTAL,"MaX")
+#Printing the graph
+p<-printGraphOverall(totalSources,"SOURCE","",minSource,maxSource,"Co-citation: Source Overall","", "Ammount of Sources")
+p
+
+```
+
+Column 
+-------------------------------------
+
+### SOURCE OVERALL: TABLE
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+# Total Sources
+totalSources<-finalDataFrame %>% select(SOURCE) %>%count(SOURCE) %>% 
+                   rename(TOTAL=n) %>% arrange(desc(TOTAL))
+printTable(totalSources)
+
+```
+
+
+By Year{data-icon="fa-book" data-navmenu=SOURCE  }
+=====================================  
+
+
+Column {data-width=600}
+-------------------------------------
+
+### SOURCE BY YEAR: GRAPHIC
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+# Total Sources by yaer
+sourceYear<-finalDataFrame %>% select(SOURCE,PUBLICATION_YEAR) %>% count(SOURCE,PUBLICATION_YEAR)%>% rename(TOTAL=n) %>% arrange(PUBLICATION_YEAR) 
+
+# Geting max and min of Sources
+minSource<- getBasicOperation(sourceYear$PUBLICATION_YEAR,"MIN")
+maxSource<- getBasicOperation(sourceYear$PUBLICATION_YEAR,"MAX")
+#Printing the graph
+
+repetido<- sourceYear %>% count(PUBLICATION_YEAR,TOTAL)
+
+sourceYear<-sourceYear %>% left_join(repetido, by = c("PUBLICATION_YEAR" = "PUBLICATION_YEAR", "TOTAL" = "TOTAL")) %>% mutate(SOURCES=if_else(n==1,SOURCE,"More than one source"))
+
+sourceYearSum<-sourceYear %>% select(SOURCES,PUBLICATION_YEAR,TOTAL) %>% 
+                         count(SOURCES,PUBLICATION_YEAR,TOTAL) %>% select(-n)
+
+#Printing the graph
+p<-printGraphYear(sourceYearSum,"SOURCE","",minSource,maxSource,"Co-citation:Source by Year","", "Ammount of Sources")
+p
+
+```
+
+
+
+Column {data-width=400}
+-------------------------------------
+### SOURCE BY YEAR: TABLE
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+printTable(sourceYear %>% select(SOURCE,PUBLICATION_YEAR,TOTAL))
+
+```
+
+
+
+By Cluster{data-icon="fa-book" data-navmenu=SOURCE  }
+=====================================  
+
+
+Column {data-width=700}
+-------------------------------------
+
+### SOURCE OVERALL BY CLUSTER: GRAPHIC
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+# Total Sources
+totalSources<-finalDataFrame %>% select(SOURCE,CLUSTER) %>%count(SOURCE,CLUSTER) %>% 
+                   rename(TOTAL=n) %>% arrange(desc(TOTAL))
+# Geting max and min of Sources
+minSource<- getBasicOperation(totalSources$TOTAL,"MIN")
+maxSource<- getBasicOperation(totalSources$TOTAL,"MaX")
+#Printing the graph
+p<-printGraphOverall(totalSources,"SOURCE","CLUSTER",minSource,maxSource,"Co-citation: Source Overall by Cluster","", "Ammount of Sources")
+p
+
+```
+
+Column {data-width=300}
+-------------------------------------
+
+### SOURCE OVERALL BY CLUSTER: TABLE
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+printTable(totalSources)
+
+```
+
+
+
+By Year and Cluster{data-icon="fa-book" data-navmenu=SOURCE  }
+=====================================  
+
+
+Column {data-width=750}
+-------------------------------------
+
+### SOURCE BY YEAR AND CLUSTER: GRAPHIC
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+# Total Sources by year
+sourceYear<-finalDataFrame %>% select(SOURCE,PUBLICATION_YEAR,CLUSTER) %>% count(SOURCE,PUBLICATION_YEAR,CLUSTER)%>% rename(TOTAL=n) %>% arrange(PUBLICATION_YEAR) 
+
+# Geting max and min of Sources
+minSource<- getBasicOperation(sourceYear$PUBLICATION_YEAR,"MIN")
+maxSource<- getBasicOperation(sourceYear$PUBLICATION_YEAR,"MAX")
+#Printing the graph
+
+repetido<- sourceYear %>% count(PUBLICATION_YEAR,TOTAL,CLUSTER)
+
+sourceYear<-sourceYear %>% left_join(repetido, by = c("PUBLICATION_YEAR" = "PUBLICATION_YEAR", "TOTAL" = "TOTAL","CLUSTER"="CLUSTER")) %>% mutate(SOURCES=if_else(n==1,SOURCE,"More than one source"))
+
+sourceYearSum<-sourceYear %>% select(SOURCES,PUBLICATION_YEAR,CLUSTER,TOTAL) %>% 
+                         count(SOURCES,PUBLICATION_YEAR,CLUSTER,TOTAL) %>% select(-n)
+
+#Printing the graph
+p<-printGraphYear(sourceYearSum,"SOURCE","CLUSTER",minSource,maxSource,"Co-citation:Source by Year and Cluster","", "Ammount of Sources")
+p
+  
+
+
+```
+
+
+Column {data-width=250}
+-------------------------------------
+### SOURCE BY YEAR AND CLUSTER: TABLE
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+printTable(sourceYear %>% select(SOURCE,PUBLICATION_YEAR,CLUSTER,TOTAL))
+
+```
+
+
+
+Overall{data-icon="fa-user" data-navmenu=FIRST_AUTHOR  }
+=====================================  
+
+Column 
+-------------------------------------
+
+### FIRST AUTHOR OVERALL: GRAPHIC (TOP 20)
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+# Total FirstAuthor
+totalFirstAuthor<-by_author %>% select(AUTHORS,AUTHOR_TYPE) %>%
+                                filter(AUTHOR_TYPE=="AUTHOR")  %>% 
+                                count(AUTHORS) %>% 
+                                rename(TOTAL=n) %>% arrange(desc(TOTAL))
+# Geting max and min of First Author
+minFirstAuthor<- getBasicOperation(totalFirstAuthor$TOTAL,"MIN")
+maxFirstAuthor<- getBasicOperation(totalFirstAuthor$TOTAL,"MAX")
+#Printing the graph
+p<-printGraphOverall(totalFirstAuthor,"FIRST AUTHOR","",minFirstAuthor,maxFirstAuthor,"Co-citation: First Author Overall","", "Ammount of Sources")
+p
+
+```
+
+
+Column 
+-------------------------------------
+
+### FIRST AUTHOR OVERALL: TABLE
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+ # Total FirstAuthor
+  totalFirstAuthor<- by_author %>% select(AUTHORS,AUTHOR_TYPE) %>%
+                                  filter(AUTHOR_TYPE=="AUTHOR")  %>% 
+                                  count(AUTHORS) %>% 
+                                  rename(TOTAL=n) %>% arrange(desc(TOTAL))
+ printTable( totalFirstAuthor)
+
+```
+
+
+By Year{data-icon="fa-user" data-navmenu=FIRST_AUTHOR   }
+=====================================  
+
+
+Column {data-width=700}
+-------------------------------------
+
+### FIRST AUTHOR  BY YEAR: GRAPHIC
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+totalFirstAuthorYear<- by_author %>% select(AUTHORS,AUTHOR_TYPE,PUBLICATION_YEAR) %>%
+                                  filter(AUTHOR_TYPE=="AUTHOR")  %>% 
+                                  count(AUTHORS,PUBLICATION_YEAR) %>% 
+                                  rename(TOTAL=n) %>% arrange(desc(TOTAL))
+# Geting max and min of First Author
+minFirstAuthorYear<- getBasicOperation(totalFirstAuthorYear$PUBLICATION_YEAR,"MIN")
+maxFirstAuthorYear<- getBasicOperation(totalFirstAuthorYear$PUBLICATION_YEAR,"MAX")
+
+repetido<-totalFirstAuthorYear %>% count(PUBLICATION_YEAR,TOTAL)
+
+totalFirstAuthorYear<-totalFirstAuthorYear %>% left_join(repetido, by = c("PUBLICATION_YEAR" = "PUBLICATION_YEAR", "TOTAL" = "TOTAL")) %>% mutate(AUTHOR=if_else(n==1,AUTHORS,"More than one author"))
+
+totalFirstAuthorYearSum<-totalFirstAuthorYear %>% select(AUTHOR,PUBLICATION_YEAR,TOTAL) %>% 
+                         count(AUTHOR,PUBLICATION_YEAR,TOTAL) %>% select(-n)
+
+#Printing the graph
+p<-printGraphYear(totalFirstAuthorYearSum,"FIRST AUTHOR","",minFirstAuthorYear,maxFirstAuthorYear,"Co-citation: First Author by Year","", "Ammount of Sources")
+p
+
+```
+
+
+
+Column {data-width=300}
+-------------------------------------
+### FIRST AUTHOR BY YEAR: TABLE
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+printTable(totalFirstAuthorYear %>% select(AUTHORS,PUBLICATION_YEAR,TOTAL))
+
+```
+
+
+
+By Cluster{data-icon="fa-user" data-navmenu=FIRST_AUTHOR }
+=====================================  
+
+
+Column {data-width=700}
+-------------------------------------
+
+### FIRST AUTHOR BY CLUSTER: GRAPHIC
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+totalFirstAuthor<-by_author %>% select(AUTHORS,AUTHOR_TYPE,CLUSTER) %>%
+                                filter(AUTHOR_TYPE=="AUTHOR")  %>% 
+                                count(AUTHORS,CLUSTER) %>% 
+                                rename(TOTAL=n) %>% arrange(desc(TOTAL))
+
+# Geting max and min of Sources
+minSource<- getBasicOperation(totalSources$TOTAL,"MIN")
+maxSource<- getBasicOperation(totalSources$TOTAL,"MAX")
+#Printing the graph
+p<-printGraphOverall(totalFirstAuthor,
+                     "FIRST AUTHOR","CLUSTER",minFirstAuthor,maxFirstAuthor,"Co-citation: First Author by Cluster","", "Ammount of Sources")
+p
+
+```
+
+Column {data-width=300}
+-------------------------------------
+### FIRST AUTHOR BY CLUSTER: TABLE
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+ totalFirstAuthor<-by_author %>% select(AUTHORS,AUTHOR_TYPE,CLUSTER) %>%
+                                filter(AUTHOR_TYPE=="AUTHOR")  %>% 
+                                count(AUTHORS,CLUSTER) %>% 
+                                rename(TOTAL=n) %>% arrange(desc(TOTAL))
+ printTable( totalFirstAuthor)
+
+```
+
+
+
+By Year and Cluster{data-icon="fa-user" data-navmenu=FIRST_AUTHOR }
+=====================================  
+
+
+Column {data-width=750}
+-------------------------------------
+
+### FIRST BY YEAR AND CLUSTER: GRAPHIC
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+totalFirstAuthorYear<- by_author %>% select(AUTHORS,AUTHOR_TYPE,PUBLICATION_YEAR,CLUSTER) %>%
+                                  filter(AUTHOR_TYPE=="AUTHOR")  %>% 
+                                  count(AUTHORS,PUBLICATION_YEAR,CLUSTER) %>% 
+                                  rename(TOTAL=n) %>% arrange(desc(TOTAL))
+# Geting max and min of First Author
+minFirstAuthorYear<- getBasicOperation(totalFirstAuthorYear$PUBLICATION_YEAR,"MIN")
+maxFirstAuthorYear<- getBasicOperation(totalFirstAuthorYear$PUBLICATION_YEAR,"MAX")
+
+repetido<-totalFirstAuthorYear %>% count(PUBLICATION_YEAR,TOTAL,CLUSTER)
+
+totalFirstAuthorYear<-totalFirstAuthorYear %>% left_join(repetido, by = c("PUBLICATION_YEAR" = "PUBLICATION_YEAR", "TOTAL" = "TOTAL", "CLUSTER"="CLUSTER")) %>% mutate(AUTHOR=if_else(n==1,AUTHORS,"More than one author"))
+
+totalFirstAuthorYearSum<-totalFirstAuthorYear %>% select(AUTHOR,PUBLICATION_YEAR,TOTAL,CLUSTER) %>% 
+                         count(AUTHOR,PUBLICATION_YEAR,TOTAL,CLUSTER) %>% select(-n)
+
+#Printing the graph
+p<-printGraphYear(totalFirstAuthorYearSum,
+                  "FIRST AUTHOR","CLUSTER",minFirstAuthorYear,maxFirstAuthorYear,"Co-citation: First Author by Year and Cluster","", "Ammount of Sources")
+p
+
+
+```
+
+
+Column {data-width=250}
+-------------------------------------
+### SOURCE BY YEAR AND CLUSTER: TABLE
+
+```{r ,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+printTable(totalFirstAuthorYear %>% select(AUTHORS,PUBLICATION_YEAR,CLUSTER,TOTAL))
+
+```
+

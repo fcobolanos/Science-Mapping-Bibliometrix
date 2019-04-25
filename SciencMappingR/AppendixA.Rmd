@@ -1,0 +1,1095 @@
+---
+title: "SCIENCE MAPPING"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+    theme: cosmo
+---
+
+```{r setup, echo=FALSE ,message=FALSE, warning=FALSE}
+# Loading libraries
+library(flexdashboard)
+library(bibliometrix)
+library(tidyverse)
+library(tidytext)
+library(countrycode)
+library(readxl)
+library(xlsx)
+library(purrr)
+library(janitor) # Converts a number to a date
+library(plotly)
+library(DT)
+library(stringr)
+library(rebus)
+
+```
+
+
+
+
+```{r Loading files,  echo=FALSE ,message=FALSE, warning=FALSE, include=FALSE}
+ # Loading txt or bib files into R environment
+#  D <- readFiles("http://bibliometrix.org/datasets/joi.txt")
+
+  #Loading data
+  setwd("C:/Users/Francisco/Documents/UEES/Research/Bibliometria/BibliometricR")
+  
+D <- readFiles("ISB01.bib","ISB02.bib")
+
+  # Converting the loaded files into a R bibliographic dataframe
+  M <- convert2df(D, dbsource="isi",format="bibtex")
+  
+  
+  
+```
+
+
+
+```{r bibliometric query, ,  echo=FALSE ,message=FALSE, warning=FALSE, include=FALSE}
+
+resultado<- biblioAnalysis(M, sep = ";")
+
+
+```
+
+
+```{r formating data,  echo=FALSE ,message=FALSE, warning=FALSE}
+
+# Elimé PT
+#M1 <- M %>%  mutate(PAPER_ID=row_number()) %>%  select(PAPER_ID,PT, AU,TI,SO,LA,DT,ID,DE, C1,CR, NR,PD,PY, PG ,WC, SC ,AB,DB, AU_UN,SR)
+
+
+M1 <- M %>%  mutate(PAPER_ID=row_number()) %>%  select(PAPER_ID, AU,TI,SO,LA,DT,ID,DE, C1,CR, NR,PY,WC, SC ,AB,DB, AU_UN,SR,VL)
+
+
+# University
+university<-M1 %>% 
+          select(PAPER_ID,TI,AU_UN) %>%
+          unnest_tokens(UNIVERSITY, AU_UN, token = stringr::str_split, pattern = ";",to_lower = FALSE) 
+
+  # nesting University data
+by_university <-university %>% group_by(PAPER_ID,TI) %>% nest
+
+# Adding id number
+get_index <- function(df){
+  
+  df %>% mutate(ID_TABLE=row_number())
+}
+
+by_university <- by_university %>%   
+                     mutate(data = map( .x = data, .f = get_index))%>%
+                     unnest(data) %>% 
+                     mutate(ID=paste(PAPER_ID,ID_TABLE, sep="_"))
+
+#Author
+author <- M1 %>% 
+          select(PAPER_ID,TI,AU) %>%
+          unnest_tokens(AUTHOR, AU, token = stringr::str_split, pattern = ";",to_lower = FALSE) 
+  
+# nesting Author data
+by_author <-author %>% group_by(PAPER_ID,TI) %>% nest
+
+
+by_author <- by_author %>%   
+                     mutate(data = map(.f = get_index, .x = data))%>%
+                     unnest(data) %>% 
+                     mutate(
+                            AUTHOR_TYPE=if_else(ID_TABLE==1,"AUTHOR","CO-AUTHOR"),
+                            ID=paste(PAPER_ID,ID_TABLE, sep="_")) 
+                     
+
+# Ojo QUita PG,
+
+#Gathering  University and Author and the other fields
+#result <- by_university %>% inner_join(by_author, by="ID") %>% 
+ #         select(ID, TI.x, AUTHOR,AUTHOR_TYPE, UNIVERSITY) %>% 
+  #        rename(TI=TI.x) %>%  
+   #       inner_join(M1 %>% select(TI, SO,LA,DT, NR,PY,PG,WC,SC,DB,CR), by="TI") %>% 
+    #      unnest_tokens(REFERENCE, CR, token = stringr::str_split, pattern = ";",to_lower = FALSE)
+
+#Gathering  University and Author and the other fields
+result <- by_university %>% inner_join(by_author, by="ID") %>% 
+          select(ID, TI.x, AUTHOR,AUTHOR_TYPE, UNIVERSITY) %>% 
+          rename(TI=TI.x) %>%  
+          inner_join(M1 %>% select(TI, SO,LA,DT, NR,PY,WC,SC,DB,CR,VL), by="TI") %>% 
+          unnest_tokens(REFERENCE, CR, token = stringr::str_split, pattern = ";",to_lower = FALSE)
+
+
+#oJO quita PG
+#result_summary<-result %>% group_by(ID,TI,AUTHOR, AUTHOR_TYPE,UNIVERSITY, SO,LA,DT, NR,PY,PG,WC,SC,DB) %>% #summarise(REFERENCE_NUMBER=n())  %>% arrange( desc(PY), ID)
+
+result_summary<-result %>% group_by(ID,TI,AUTHOR, AUTHOR_TYPE,UNIVERSITY, SO,LA,DT, NR,PY,WC,SC,DB,VL) %>% summarise(REFERENCE_NUMBER=n())  %>% arrange( desc(PY), ID)
+
+
+
+#Default 20 character target width.
+swr = function(string, nwrap=20) {
+  paste(strwrap(string, width=nwrap), collapse="\n")
+}
+swr = Vectorize(swr)
+
+```
+
+
+```{r descriptive,echo=FALSE ,message=FALSE, warning=FALSE }
+#Number of total sources
+maximo<- result_summary %>%  ungroup()%>% summarise(max(PY)) %>% as.integer()
+minimo<- result_summary %>%  ungroup()%>% summarise(min(PY))%>% as.integer()
+```
+
+
+DESCRIPTIVE STATISTICS{data-icon="fa-area-chart" data-navmenu=Overall }
+=====================================  
+
+Column {data-width=250}
+-------------------------------------
+
+### PERIOD OF ANALYSIS
+```{r}
+valueBox(paste(minimo, " - ",maximo), icon = "fa-calendar-alt",color="teal")
+```
+
+### NUMBER OF AUTHORS
+```{r}
+#Number of authors (first author) # Ojo este número no coincide con el original porque la universidad disminuyó
+total_first_author<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="AUTHOR") %>% select(AUTHOR) %>% count(AUTHOR, sort =TRUE) %>% summarise(n()) %>% as.integer()
+valueBox(total_first_author, icon = "fa-user",color="teal")
+```
+
+### NUMBER OF COUNTRIES
+```{r}
+#admission_MATI_name <- "MATI_OL_2014A"
+#admission_number<-admission_overall %>% filter(CURSO==admission_MATI_name) %>% select(n) %>% # # as.integer()
+valueBox(0, icon = "fa-globe",color="teal")
+```
+
+
+
+Column {data-width=250}
+-------------------------------------
+
+### NUMBER OF DOCUMENTS
+
+```{r}
+#Number of total sources
+total_source <-result_summary %>% group_by(TI) %>% summarise(TOTAL=n()) %>% 
+                                    ungroup() %>% select(TI) %>% summarise(n()) %>%  as.integer()
+
+valueBox(total_source, icon = "fa-file-word",color="teal")
+
+```
+
+
+### NUMBER OF CO-AUTHORS
+
+```{r}
+#Number of authors (first author) # Ojo este número no coincide con el original porque la universidad disminuyó
+total_co_author<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="CO-AUTHOR") %>% select(AUTHOR) %>% count(AUTHOR, sort =TRUE) %>% summarise(n()) %>% as.integer()
+valueBox(total_co_author, icon = "fa-user",color="teal")
+```
+
+
+### NUMBER OF UNIVERSITIES
+
+
+```{r}
+
+#admission_MATI_name <- "MATI_OL_2014A"
+#admission_number<-admission_overall %>% filter(CURSO==admission_MATI_name) %>% select(n) %>% # # as.integer()
+valueBox(0, icon = "fa-university",color="teal")
+
+```
+
+
+Column {data-width=500}
+-------------------------------------
+
+### DOCUMENT TYPE:Graph
+
+```{r}
+total_source_type<-M1 %>% count(DT) %>%rename(AMMOUNT = n, SOURCE=DT) %>% mutate(TOTAL= total_source) %>% mutate(PERCENTAGE=round(AMMOUNT/TOTAL,2)) %>% arrange(desc(PERCENTAGE))
+
+fig_tst<-total_source_type %>% ggplot(aes(x=reorder(SOURCE,PERCENTAGE), y=PERCENTAGE,fill=SOURCE))+
+                      geom_col()+
+                      geom_text(aes( label = scales::percent(PERCENTAGE)), vjust = -.00,size=3)+
+                      scale_y_continuous(limits=c(0,1), labels = scales::percent)+
+                      coord_flip()+
+                      theme_bw()+
+                      scale_fill_brewer(palette="Set3")+
+                      labs(title="",x ="", y = "") 
+ggplotly(fig_tst)
+```
+
+
+### DOCUMENT TYPE: Table
+
+```{r}
+table_tst<-total_source_type %>% select(-TOTAL) %>% mutate(PERCENTAGE=PERCENTAGE*100)
+table_tst %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  ))
+```
+
+
+ANNUAL PRODUCTION: Overall{data-icon="fa-calendar-check" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### ANNUAL SCIENTIFIC PRODUCTION: Overall - Graph
+```{r}
+anual_production_paper<-result_summary %>% ungroup() %>% select(TI,PY) %>% 
+                    group_by(TI,PY) %>% summarise(count=n()) %>% 
+                   ungroup() %>% count(PY) %>% rename(YEAR=PY,
+                                                      AMMOUNT_PAPERS=n) %>% arrange(desc(YEAR)) 
+
+anual_production_paper$YEAR<-as.integer(anual_production_paper$YEAR)
+           
+fig_ap <- anual_production_paper %>% 
+                        ggplot( aes(x=YEAR,y=AMMOUNT_PAPERS))+
+                        geom_line(color="blue")+
+                        geom_point(aes(x=YEAR,y=AMMOUNT_PAPERS),color="red")+
+                        scale_x_continuous(breaks = seq(minimo, maximo, by = 2))+
+                        theme_bw()+
+                        scale_fill_brewer(palette="Set3")+
+                        geom_text(aes(x=YEAR,y=AMMOUNT_PAPERS,group=1,label =AMMOUNT_PAPERS),position = position_stack(vjust = .95),size=3)+
+                        labs(title="",x ="Year", y = "N° papers")  
+ggplotly(fig_ap)
+```   
+
+Column
+-------------------------------------
+### ANNUAL SCIENTIFIC PRODUCTION:Overall - Table
+
+```{r}
+anual_production_paper %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  ))
+```   
+ 
+
+ANNUAL PRODUCTION: Document type{data-icon="fa-calendar-check" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### ANNUAL SCIENTIFIC PRODUCTION:Document type - Graph
+```{r}
+anual_production_document<-result_summary %>% ungroup() %>% select(TI,PY,DT) %>% 
+                    group_by(TI,PY,DT) %>% summarise(count=n()) %>% 
+                   ungroup() %>% group_by(PY,DT) %>% summarise(TOTAL=n()) %>%
+                    ungroup() %>% rename(YEAR=PY,AMMOUNT_PAPERS=TOTAL,DOCUMENT_TYPE=DT) %>%  arrange(desc(YEAR)) 
+
+anual_production_document$YEAR<-as.integer(anual_production_document$YEAR)
+
+# Create line breaks in Year
+anual_production_document$DOCUMENT_TYPE <- swr(anual_production_document$DOCUMENT_TYPE)       
+
+    
+fig_apdt <- anual_production_document %>% 
+                        ggplot( aes(x=YEAR,y=AMMOUNT_PAPERS))+
+                        geom_line(color="blue")+
+                        geom_point(aes(x=YEAR,y=AMMOUNT_PAPERS),color="red")+
+                        scale_x_continuous(breaks = seq(minimo, maximo, by = 2))+
+                        theme_bw()+
+                        scale_fill_brewer(palette="Set3")+
+                        geom_text(aes(x=YEAR,y=AMMOUNT_PAPERS,group=1,label =AMMOUNT_PAPERS),position = position_stack(vjust = .95),size=3)+
+                        facet_wrap(~DOCUMENT_TYPE)+
+                        theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+                        labs(title="",x ="Year", y = "N° papers") 
+                 
+ggplotly(fig_apdt)
+```   
+
+Column
+-------------------------------------
+### ANNUAL SCIENTIFIC PRODUCTION::Document type - Table
+
+```{r}
+anual_production_document %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )
+) 
+```   
+ 
+ 
+ ANNUAL PRODUCTION:Knowledege Area{data-icon="fa-calendar-check" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### ANNUAL SCIENTIFIC PRODUCTION:Knowledege Area - Graph
+```{r}
+anual_production_area<-result_summary %>% ungroup() %>% select(TI,PY,WC) %>% 
+                    group_by(TI,PY,WC) %>% summarise(count=n()) %>% 
+                   ungroup() %>% group_by(PY,WC) %>% summarise(TOTAL=n()) %>%
+                    ungroup() %>% rename(YEAR=PY,AMMOUNT_PAPERS=TOTAL,KNOWLEDGE_AREA=WC) %>%  arrange(desc(YEAR)) 
+
+anual_production_area$YEAR<-as.integer(anual_production_area$YEAR)
+
+top_10 <- anual_production_area %>% 
+          group_by(KNOWLEDGE_AREA) %>% summarise(TOTAL=sum(AMMOUNT_PAPERS)) %>% 
+          ungroup() %>% arrange(desc(TOTAL)) %>% head(5) %>% select(KNOWLEDGE_AREA) %>% 
+          as_vector() %>% map_chr(~.x)
+
+anual_production_area_top <- anual_production_area %>% 
+                             filter(KNOWLEDGE_AREA %in% top_10) 
+# Create line breaks in Year
+anual_production_area_top$KNOWLEDGE_AREA <- swr(anual_production_area_top$KNOWLEDGE_AREA)       
+
+                            
+fig_apa <- anual_production_area_top %>% 
+                        ggplot( aes(x=YEAR,y=AMMOUNT_PAPERS))+
+                        geom_line(color="blue")+
+                        geom_point(aes(x=YEAR,y=AMMOUNT_PAPERS),color="red")+
+                        scale_x_continuous(breaks = seq(minimo, maximo, by = 2))+
+                        theme_bw()+
+                        scale_fill_brewer(palette="Set3")+
+                        geom_text(aes(x=YEAR,y=AMMOUNT_PAPERS,group=1,label =AMMOUNT_PAPERS),position = position_stack(vjust = .95),size=3)+
+                        facet_wrap(~KNOWLEDGE_AREA)+
+                         theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+                        labs(title="",x ="Year", y = "N° papers") 
+                     
+ggplotly(fig_apa)
+```   
+
+Column
+-------------------------------------
+### ANNUAL SCIENTIFIC PRODUCTION:Knowledege Area - Table
+
+```{r}
+anual_production_area  %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+```   
+ 
+
+
+AUTHOR PRODUCTION{data-icon="fa-user" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### AUTHOR PRODUCTION: OVERALL - Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+author_production<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="AUTHOR") %>% 
+                                      select(AUTHOR) %>% group_by(AUTHOR) %>% summarise(TOTAL=n()) %>% 
+                                      arrange(desc(TOTAL))
+
+fig_autp <- author_production %>% head(10) %>% 
+                          ggplot( aes(x=reorder(AUTHOR,TOTAL),y=TOTAL))+
+                          geom_col(fill="light blue")+
+                          geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                          coord_flip()+
+                          theme_bw()+
+                          scale_fill_brewer(palette="Set3")+
+                          labs(title="",x ="AUTHOR", y = "N° papers")
+ggplotly( fig_autp)
+```   
+
+Column
+-------------------------------------
+### AUTHOR PRODUCTION: OVERALL - Table
+```{r }
+author_production %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+ 
+ 
+ 
+  
+ 
+
+AUTHOR PRODUCTION:Document type{data-icon="fa-user" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### AUTHOR PRODUCTION: Document type - Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+author_production_document_type<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="AUTHOR") %>% 
+                                select(AUTHOR,DT) %>% group_by(AUTHOR,DT) %>% summarise(TOTAL=n()) %>%                                 rename(DOCUMENT_TYPE=DT) %>% arrange(DOCUMENT_TYPE,desc(TOTAL))
+
+document_type <- result_summary %>%ungroup() %>%  select(DT) %>% count(DT) %>% select(DT)
+
+
+#Getting the top 5 of each category
+for(i in 1:nrow(document_type)) {
+  if(i==1){
+           var1<-author_production_document_type %>%  filter(DOCUMENT_TYPE==document_type[i,"DT"]) %>% head(5)
+  }else
+  {
+    var1 <- var1 %>% bind_rows(author_production_document_type %>%          filter(DOCUMENT_TYPE==document_type[i,"DT"]) %>%head(5))
+    
+  }
+  
+}
+
+# Create line breaks in Document Type
+var1$DOCUMENT_TYPE <- swr(var1$DOCUMENT_TYPE)       
+
+  
+fig_autp_dt<- var1 %>% ggplot( aes(x=reorder(AUTHOR,TOTAL),y=TOTAL))+
+                       geom_col(fill="light blue")+
+                       geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                       coord_flip()+
+                       facet_wrap(~DOCUMENT_TYPE, scales="free")+
+                       theme_bw()+
+                       scale_fill_brewer(palette="Set3")+
+                       theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+                       labs(title="",x ="AUTHOR", y = "N° papers") 
+ggplotly(fig_autp_dt)
+```   
+
+Column
+-------------------------------------
+### AUTHOR PRODUCTION: Document type - Table
+```{r }
+author_production_document_type %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+  
+ 
+
+AUTHOR PRODUCTION:Knowledege Area {data-icon="fa-user" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### AUTHOR PRODUCTION: Knowledege Area  - Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+author_production_area<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="AUTHOR") %>% 
+                                select(AUTHOR,WC) %>% group_by(AUTHOR,WC) %>% summarise(TOTAL=n()) %>%                                 rename(KNOWLEDGE_AREA=WC) %>% arrange(KNOWLEDGE_AREA,desc(TOTAL))
+
+author_production_area_top <- author_production_area %>% 
+                             filter(KNOWLEDGE_AREA %in% top_10) 
+
+by_author_production_area_top<-author_production_area_top%>% group_by(KNOWLEDGE_AREA) %>% nest
+
+
+by_author_production_area_top <- by_author_production_area_top %>%   
+                     mutate(data = map( .x = data, .f = get_index))%>%
+                     unnest(data) %>% filter(ID_TABLE <=5)
+
+
+# Create line breaks in Document Type
+by_author_production_area_top$KNOWLEDGE_AREA <- swr(by_author_production_area_top$KNOWLEDGE_AREA)       
+
+fig_autp_a<- by_author_production_area_top %>% 
+                       ggplot( aes(x=reorder(AUTHOR,TOTAL),y=TOTAL))+
+                       geom_col(fill="light blue")+
+                       geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                       coord_flip()+
+                       facet_wrap(~KNOWLEDGE_AREA, scales="free")+
+                       theme_bw()+
+                       scale_fill_brewer(palette="Set3")+
+                       theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+                       labs(title="",x ="AUTHOR", y = "N° papers")
+
+ggplotly(fig_autp_a)
+```   
+
+Column
+-------------------------------------
+### AUTHOR PRODUCTION: Knowledege Area  - Table
+```{r }
+author_production_area %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+
+
+CO-AUTHOR PRODUCTION{data-icon="fa-users" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### CO-AUTHOR PRODUCTION: OVERALL - Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+author_production<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="CO-AUTHOR") %>% 
+                                      select(AUTHOR) %>% group_by(AUTHOR) %>% summarise(TOTAL=n()) %>% 
+                                      arrange(desc(TOTAL))
+
+fig_autp <- author_production %>% head(10) %>% 
+                          ggplot( aes(x=reorder(AUTHOR,TOTAL),y=TOTAL))+
+                          geom_col(fill="light blue")+
+                          geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                          coord_flip()+
+                          theme_bw()+
+                          scale_fill_brewer(palette="Set3")+
+                          labs(title="",x ="CO-AUTHOR", y = "N° papers")
+ggplotly( fig_autp)
+```   
+
+Column
+-------------------------------------
+### CO-AUTHOR PRODUCTION: OVERALL - Table
+```{r }
+author_production %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+
+
+
+CO-AUTHOR PRODUCTION:Document type{data-icon="fa-users" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### CO-AUTHOR PRODUCTION: Document type - Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+  author_production_document_type<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="CO-AUTHOR") %>% 
+                                  select(AUTHOR,DT) %>% group_by(AUTHOR,DT) %>% summarise(TOTAL=n()) %>%                                 rename(DOCUMENT_TYPE=DT) %>% arrange(DOCUMENT_TYPE,desc(TOTAL))
+  
+  document_type <- result_summary %>%ungroup() %>%  select(DT) %>% count(DT) %>% select(DT)
+  
+  
+  #Getting the top 5 of each category
+  for(i in 1:nrow(document_type)) {
+    if(i==1){
+             var1<-author_production_document_type %>%  filter(DOCUMENT_TYPE==document_type[i,"DT"]) %>% head(5)
+    }else
+    {
+      var1 <- var1 %>% bind_rows(author_production_document_type %>%          filter(DOCUMENT_TYPE==document_type[i,"DT"]) %>%head(5))
+      
+    }
+    
+  }
+  
+  
+  # Create line breaks in Document Type
+  var1$DOCUMENT_TYPE <- swr(var1$DOCUMENT_TYPE)     
+    
+  fig_autp_dt<- var1 %>% ggplot( aes(x=reorder(AUTHOR,TOTAL),y=TOTAL))+
+                         geom_col(fill="light blue")+
+                         geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                         coord_flip()+
+                         facet_wrap(~DOCUMENT_TYPE, scales="free")+
+                         theme_bw()+
+                         scale_fill_brewer(palette="Set3")+
+                         theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+                         labs(title="",x ="CO-AUTHOR", y = "N° papers") 
+  ggplotly(fig_autp_dt)
+```   
+
+
+Column
+-------------------------------------
+### CO-AUTHOR PRODUCTION: Document type - Table
+```{r }
+author_production_document_type %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+
+
+CO-AUTHOR PRODUCTION:Knowledege Area {data-icon="fa-users" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### CO-AUTHOR PRODUCTION: Knowledege Area  - Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+author_production_area1<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="CO-AUTHOR") %>% 
+                                select(AUTHOR,WC) %>% group_by(AUTHOR,WC) %>% summarise(TOTAL=n()) %>%                                 rename(KNOWLEDGE_AREA=WC) %>% arrange(KNOWLEDGE_AREA,desc(TOTAL))
+
+author_production_area_top1 <- author_production_area1 %>% 
+                             filter(KNOWLEDGE_AREA %in% top_10) 
+
+by_author_production_area_top1<-author_production_area_top1%>% group_by(KNOWLEDGE_AREA) %>% nest
+
+
+by_author_production_area_top1 <- by_author_production_area_top1 %>%   
+                     mutate(data = map( .x = data, .f = get_index))%>%
+                     unnest(data) %>% filter(ID_TABLE <=5)
+
+# Create line breaks in Year
+by_author_production_area_top1$KNOWLEDGE_AREA <- swr(by_author_production_area_top1$KNOWLEDGE_AREA)
+
+  fig_autp_a1<- by_author_production_area_top1 %>% 
+                         ggplot( aes(x=reorder(AUTHOR,TOTAL),y=TOTAL))+
+                         geom_col(fill="light blue")+
+                         geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                         coord_flip()+
+                         facet_wrap(~KNOWLEDGE_AREA, scales="free")+
+                         theme_bw()+
+                         theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+                         labs(title="",x ="CO_AUTHOR", y = "N° papers")
+  
+  fig_autp_a1
+  #ggplotly(fig_autp_a1) 
+```   
+
+Column
+-------------------------------------
+### CO-AUTHOR PRODUCTION: Knowledege Area  - Table
+```{r }
+author_production_area %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+
+
+
+JOURNAL PRODUCTION: Overall {data-icon="fa-book" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### JOURNAL PRODUCTION: Overall  - Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+journal_production<-result_summary %>% ungroup() %>% filter(AUTHOR_TYPE=="AUTHOR") %>% 
+                                      select(SO) %>% group_by(SO) %>% summarise(TOTAL=n()) %>% 
+                                      arrange(desc(TOTAL)) %>% rename(JOURNAL=SO)
+fig_jp <- journal_production %>% head(10) %>% 
+                          ggplot( aes(x=reorder(JOURNAL,TOTAL),y=TOTAL))+
+                          geom_col(fill="light blue")+
+                          geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                          coord_flip()+
+                          theme_bw()+
+                          scale_fill_brewer(palette="Set3")+
+                          labs(title="",x ="JOURNAL", y = "N° papers")
+                          
+ggplotly(fig_jp)       
+  
+```   
+
+Column
+-------------------------------------
+### JOURNAL PRODUCTION: Overall  - Table
+```{r }
+journal_production %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+
+
+JOURNAL PRODUCTION: Document type {data-icon="fa-book" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### JOURNAL PRODUCTION: Document type- Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+journal_production_document_type<-result_summary %>% ungroup() %>%  group_by(TI,SO,DT) %>% summarise(vALUE=n()) %>% ungroup() %>% select(SO,DT) %>% group_by(SO,DT) %>% summarise(TOTAL=n()) %>%                             rename(DOCUMENT_TYPE=DT,JOURNAL=SO) %>% arrange(DOCUMENT_TYPE,desc(TOTAL))
+
+document_type <- result_summary %>%ungroup() %>%  select(DT) %>% count(DT) %>% select(DT)
+
+
+#Getting the top 5 of each category
+for(i in 1:nrow(document_type)) {
+  if(i==1){
+           var1<-journal_production_document_type %>%  filter(DOCUMENT_TYPE==document_type[i,"DT"]) %>% head(3)
+  }else
+  {
+    var1 <- var1 %>% bind_rows(journal_production_document_type %>%          filter(DOCUMENT_TYPE==document_type[i,"DT"]) %>%head(3))
+    
+  }
+  
+}
+
+# Create line breaks in Document Type
+var1$DOCUMENT_TYPE <- swr(var1$DOCUMENT_TYPE) 
+var1$JOURNAL <- swr(var1$JOURNAL ) 
+
+
+fig_autp_dt<- var1 %>% ggplot( aes(x=reorder(JOURNAL,TOTAL),y=TOTAL))+
+                       geom_col(fill="light blue")+
+                       geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                       coord_flip()+
+                       facet_wrap(~DOCUMENT_TYPE, scales="free")+
+                       theme_bw()+
+                       scale_fill_brewer(palette="Set3")+
+                       theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+                       labs(title="",x ="JOURNAL", y = "N° papers")
+                            
+#ggplotly(fig_autp_dt)       
+  
+fig_autp_dt
+
+```   
+
+Column
+-------------------------------------
+### JOURNAL PRODUCTION: Document type  - Table
+```{r }
+journal_production_document_type %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+
+
+JOURNAL PRODUCTION: Knowledge area {data-icon="fa-book" data-navmenu=Overall  }
+=====================================  
+
+Column
+-------------------------------------
+
+### JOURNAL PRODUCTION: Knowledge area- Graph
+```{r ,echo=FALSE ,message=FALSE, warning=FALSE }
+journal_production_area<-result_summary %>% ungroup() %>%  group_by(TI,WC,SO) %>% summarise(vALUE=n()) %>% ungroup() %>% select(WC,SO) %>% group_by(WC,SO) %>% summarise(TOTAL=n()) %>%                             rename(KNOWLEDGE_AREA=WC, JOURNAL=SO) %>% arrange(KNOWLEDGE_AREA,desc(TOTAL))
+
+
+journal_production_area_top <- journal_production_area %>% 
+                             filter(KNOWLEDGE_AREA %in% top_10) 
+
+by_journal_production_area_top<-journal_production_area_top%>% group_by(KNOWLEDGE_AREA) %>% nest
+
+
+by_journal_production_area_top <- by_journal_production_area_top %>%   
+                     mutate(data = map( .x = data, .f = get_index))%>%
+                     unnest(data) %>% filter(ID_TABLE <=5)
+
+# Create line breaks in Year
+by_journal_production_area_top$KNOWLEDGE_AREA <- swr(by_journal_production_area_top$KNOWLEDGE_AREA)
+by_journal_production_area_top$JOURNAL<- swr(by_journal_production_area_top$JOURNAL)
+
+
+fig_autp_dt<- by_journal_production_area_top %>% ggplot( aes(x=reorder(JOURNAL,TOTAL),y=TOTAL))+
+                       geom_col(fill="light blue")+
+                       geom_text(aes(label=TOTAL), vjust=-0.40, size=3)+
+                       coord_flip()+
+                       facet_wrap(~KNOWLEDGE_AREA, scales="free")+
+                       theme_bw()+
+                       scale_fill_brewer(palette="Set3")+
+                       theme(axis.text.x=element_text(angle=90,hjust=0.95,vjust=0.2))+
+                       labs(title="",x ="JOURNAL", y = "N° papers")
+
+fig_autp_dt
+                            
+#ggplotly(fig_autp_dt)
+  
+```   
+
+Column
+-------------------------------------
+### JOURNAL PRODUCTION: Knowledge area - Table
+```{r }
+journal_production_area %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```   
+
+
+
+
+
+Author: Quality indexes{data-icon="fa-user" data-navmenu=Performance_Indicators }
+===================================== 
+
+Row {data-width=300}
+-------------------------------------
+
+### Author: Quality indexes
+```{r}
+authors<-gsub(","," ",names(resultado$Authors)[1:length(resultado$Authors)])
+indices <- Hindex(M, field = "author", elements=authors, sep = ";", years = 50)
+indices$H %>% rename(`Times Cited`=TC, `Number of Publications`=NP) %>%  datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  ))
+```
+
+
+Journal: Quality indexes{data-icon="fa-book" data-navmenu=Performance_Indicators }
+===================================== 
+
+Row {data-width=300}
+-------------------------------------
+
+### Journal: Quality indexes
+```{r}
+journals<-gsub(","," ",names(resultado$Sources)[1:length(resultado$Sources)])
+indices <- Hindex(M, field = "source", elements=journals, sep = ";", years = 50)
+indices$H %>% rename(`Times Cited`=TC, `Number of Publications`=NP) %>%  datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  ))
+```
+
+
+BRADFORD´S LAW{data-icon="fa-area-chart" data-navmenu=Performance_Indicators }
+===================================== 
+
+Column {data-width=500}
+-------------------------------------
+
+### Bradford´s law: Graphic
+```{r}
+BR <- bradford(M)
+BR$graph
+```
+
+Column {data-width=500}
+-------------------------------------
+### Bradford´s law: Table
+```{r}
+BR$table %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+```
+
+
+LOTKA´S LAW{data-icon="fa-area-chart" data-navmenu=Performance_Indicators }
+===================================== 
+
+### Lotka´s law
+```{r}
+L <- lotka(resultado)
+Observed=L$AuthorProd[,3]
+# Theoretical distribution with Beta = 2
+Theoretical=10^(log10(L$C)-2*log10(L$AuthorProd[,1]))
+
+plot(L$AuthorProd[,1],Theoretical,type="l",col="red",ylim=c(0, 1), xlab="Articles",ylab="Freq. of Authors",main="Scientific Productivity")
+lines(L$AuthorProd[,1],Observed,col="blue")
+legend(x="topright",c("Theoretical (B=2)","Observed"),col=c("red","blue"),lty = c(1,1,1),cex=0.6,bty="n")
+
+```
+
+
+Co-citation Reference{data-icon="fa-area-chart" data-navmenu=Science_Mapping_Intellectual_Structure }
+===================================== 
+
+Column
+-------------------------------------
+
+### Co-citation reference Network
+
+```{r}
+# Create a co-citation network
+NetMatrix <- biblioNetwork(M, analysis = "co-citation", network = "references", sep = ";",  shortlabel=FALSE)
+
+# Plot the network
+net=networkPlot(NetMatrix, n = 30, Title = "Co-Citation Network", type = "fruchterman", size=T, remove.multiple=FALSE, labelsize=0.7,edgesize = 5)
+
+clusters<- net$cluster_res  %>% select(-btw_centrality)  %>% rename(REFERENCE=vertex,CLUSTER=cluster)
+
+```
+
+
+Column
+-------------------------------------
+
+### Co-citation Reference Table
+
+```{r}
+
+clusters %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```
+
+
+Co-coupling Reference{data-icon="fa-area-chart" data-navmenu=Science_Mapping_Intellectual_Structure }
+===================================== 
+
+
+Column
+-------------------------------------
+
+
+### Co-coupling Reference Network
+
+```{r}
+# Create a co-citation network
+NetMatrix <- biblioNetwork(M, analysis = "coupling", network = "references", sep = ";",shortlabel=FALSE)
+
+NetMatrix <- biblioNetwork(M, analysis = "coupling", network = "references", sep = ";")
+
+# Plot the network
+net=networkPlot(NetMatrix, n = 30, Title = "ISB Coupling Network", type = "fruchterman", size=T, remove.multiple=FALSE, labelsize=0.7,edgesize = 5)
+
+clusters<- net$cluster_res  %>% select(-btw_centrality) %>% rename(REFERENCE=vertex,CLUSTER=cluster)
+
+```
+
+Column
+-------------------------------------
+
+### Co-coupling Reference Table
+
+```{r}
+
+clusters %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```
+
+
+
+Conceptual map{data-icon="fa-area-chart" data-navmenu=Science_Mapping_Conceptual_Map }
+===================================== 
+
+Column { .tabset}
+-------------------------------------
+
+### Keywords Co-occurrences
+```{r}
+# Create keyword co-occurrences network
+NetMatrix <- biblioNetwork(M, analysis = "co-occurrences", network = "keywords", sep = ";")
+
+# Plot the network
+net=networkPlot(NetMatrix, normalize="association", weighted=T, n = 30, Title = "Keyword Co-occurrences", type = "fruchterman", size=T,edgesize = 5,labelsize=0.7)
+```
+
+
+### Conceptual Map
+```{r}
+CS <- conceptualStructure(M,field="ID", method="CA", minDegree=4, k.max=8, stemming=FALSE, labelsize=10, documents=10)
+
+```
+
+
+### Thematic Map
+
+```{r}
+
+Map=thematicMap(M, field = "ID", n = 250, minfreq = 5,
+  stemming = FALSE, size = 0.5, repel = TRUE)
+plot(Map$map)
+
+
+```
+
+
+Author Collaboration{data-icon="fa-area-chart" data-navmenu=Science_Mapping_Social_Structure }
+===================================== 
+
+Column 
+-------------------------------------
+
+### Author Collaboration Network
+```{r}
+NetMatrix <- biblioNetwork(M, analysis = "collaboration",  network = "authors", sep = ";",shortlabel=FALSE)
+net=networkPlot(NetMatrix,  n = 50, Title = "Author collaboration",type = "auto", size=10,size.cex=T,edgesize = 3,labelsize=0.6)
+
+
+clusters<- net$cluster_res %>%select(-btw_centrality) %>%  rename(REFERENCE=vertex,CLUSTER=cluster)
+
+
+
+```
+
+
+Column 
+-------------------------------------
+### Author Collaboration Table
+```{r}
+
+clusters %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```
+
+
+
+Affiliation  Collaboration{data-icon="fa-area-chart" data-navmenu=Science_Mapping_Social_Structure }
+===================================== 
+
+Column 
+-------------------------------------
+
+### Affiliation Collaboration Network
+```{r}
+NetMatrix <- biblioNetwork(M, analysis = "collaboration",  network = "universities", sep = ";")
+net=networkPlot(NetMatrix,  n = 50, Title = "Affiliation collaboration",type = "auto", size=10,size.cex=T,edgesize = 3,labelsize=0.6)
+
+clusters<- net$cluster_res %>%select(-btw_centrality) %>%  rename(REFERENCE=vertex,CLUSTER=cluster)
+```
+
+
+Column 
+-------------------------------------
+### Affiliation Collaboration Table
+```{r}
+clusters %>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+
+```
+
+
+Country Collaboration{data-icon="fa-area-chart" data-navmenu=Science_Mapping_Social_Structure }
+===================================== 
+
+Column 
+-------------------------------------
+### Country Collaboration Network
+
+```{r}
+M2<- metaTagExtraction(M, Field = "AU_CO", sep = ";")
+NetMatrix <- biblioNetwork(M2, analysis = "collaboration",  network = "countries", sep = ";")
+net=networkPlot(NetMatrix,  n = dim(NetMatrix)[1], Title = "Country collaboration",type = "sphere", size=10,size.cex=T,edgesize = 1,labelsize=0.6, cluster="none")
+
+```
+
+
+
+
+
+
+

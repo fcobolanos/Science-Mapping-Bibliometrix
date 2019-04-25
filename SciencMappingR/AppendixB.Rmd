@@ -1,0 +1,419 @@
+---
+title: "SCIENCE MAPPING"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+    theme: cosmo
+  params:
+    analysis_type: co-citation
+    network_type: references
+  
+---
+
+```{r setup, echo=FALSE ,message=FALSE, warning=FALSE}
+# Loading libraries
+library(flexdashboard)
+library(bibliometrix)
+library(tidyverse)
+library(tidytext)
+library(countrycode)
+library(readxl)
+library(xlsx)
+library(purrr)
+library(janitor) # Converts a number to a date
+library(plotly)
+library(DT)
+library(stringr)
+library(rebus)
+
+```
+
+
+
+
+```{r Loading files,  echo=FALSE ,message=FALSE, warning=FALSE, include=FALSE}
+#Loading data
+setwd("C:/Users/Francisco/Documents/UEES/Research/Bibliometria/BibliometricR")
+  
+D <- readFiles("ISB01.bib","ISB02.bib")
+
+# Converting the loaded files into a R bibliographic dataframe
+M <- convert2df(D, dbsource="isi",format="bibtex")
+  
+```
+
+
+```{r bibliometric query, ,  echo=FALSE ,message=FALSE, warning=FALSE, include=FALSE}
+
+
+resultado<- biblioAnalysis(M, sep = ";")
+
+# Objeto de la Intellectual Structure
+intellectualStructure <- function(analysis_type, network_type,separator,number ){
+
+NetMatrix <- biblioNetwork(M, analysis = analysis_type, network = network_type, sep =separator,  shortlabel=FALSE)
+
+# Plot the network
+net=networkPlot(NetMatrix, n = number, Title = "Co-Citation Network", type = "fruchterman", size=T, remove.multiple=FALSE, labelsize=0.7,edgesize = 5)
+
+return(net)
+}
+
+# Listado de la Intellectual Structure
+listaIntellectualStructure <- function(net,number ){
+
+lista<- net$cluster_res  %>% select(-btw_centrality)%>% rename(REFERENCE=vertex,CLUSTER=cluster) %>% 
+mutate(CLUSTER_NUMBER=number)  
+
+return(lista)
+}
+
+printTable <- function(lista ){
+
+  listaTable<-lista%>% datatable(
+   extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+  )) 
+  
+return(listaTable)
+}
+
+getEquation <- function(lista ){
+
+  equation<-lista %>% select(REFERENCE) %>% 
+            mutate(ID=row_number()) %>% 
+            select(ID, REFERENCE) %>%
+            mutate(REFERENCE=str_trim(REFERENCE, side = "both")) %>% 
+            mutate(REFERENCE= str_replace(REFERENCE,pattern = SPC,replacement = "-")) %>% 
+            mutate(REFERENCE= str_replace(REFERENCE,pattern = SPC,replacement = "_")) %>%
+            mutate(REFERENCE= str_replace(REFERENCE,pattern = SPC,replacement = "_")) %>%
+            mutate(REFERENCE= str_replace(REFERENCE,pattern = SPC,replacement = "-")) %>%
+            separate(REFERENCE,c("AUTHOR","YEAR","JOURNAL"),sep = "_") %>% 
+            mutate(AUTHOR =str_replace(AUTHOR,pattern = "-", replacement = " ")) %>% 
+            mutate(JOURNAL =str_replace(JOURNAL,pattern = "-", replacement = " ")) %>% 
+            mutate(EQUATION=paste( "( AU=",AUTHOR, " AND PY=",YEAR , " AND SO=",JOURNAL  ,")"  ) ) %>% select(EQUATION) 
+
+n<- nrow(equation)
+result1<-equation[1,]
+
+for (i in 2:n){
+     result1<- paste(result1," OR ",equation[i,] )
+  }
+  
+return(result1)
+  
+}
+
+```
+
+
+
+
+Reference 20{data-icon="fa-area-chart" data-navmenu=Co-citation }
+===================================== 
+
+Column
+-------------------------------------
+
+### Co-citation reference Network: 20 Nodes
+
+```{r}
+net20 <- intellectualStructure("co-citation", "references",";",20 )
+lista20 <- listaIntellectualStructure(net20,20)
+
+```
+
+
+Column
+-------------------------------------
+
+### Co-citation Reference Table: 20 Nodes
+
+```{r}
+printTable(lista20) 
+
+```
+
+
+Reference 25{data-icon="fa-area-chart" data-navmenu=Co-citation }
+===================================== 
+
+Column
+-------------------------------------
+
+### Co-citation reference Network: 25 Nodes
+
+```{r}
+net25 <- intellectualStructure("co-citation", "references",";",25 )
+lista25 <- listaIntellectualStructure(net25,25)
+
+```
+
+
+Column
+-------------------------------------
+
+### Co-citation Reference Table: 25 Nodes
+
+```{r}
+printTable(lista25) 
+
+```
+
+
+Reference 30{data-icon="fa-area-chart" data-navmenu=Co-citation }
+===================================== 
+
+Column
+-------------------------------------
+
+### Co-citation reference Network: 30 Nodes
+
+```{r}
+net30 <- intellectualStructure("co-citation", "references",";",30 )
+lista30 <- listaIntellectualStructure(net30,30)
+
+```
+
+
+Column
+-------------------------------------
+
+### Co-citation Reference Table: 30 Nodes
+
+```{r}
+printTable(lista30)
+
+```
+
+
+
+Reference 35{data-icon="fa-area-chart" data-navmenu=Co-citation }
+===================================== 
+
+Column
+-------------------------------------
+
+### Co-citation reference Network: 35 Nodes
+
+```{r}
+net35 <- intellectualStructure("co-citation", "references",";",35 )
+lista35 <- listaIntellectualStructure(net35,35)
+
+```
+
+
+Column
+-------------------------------------
+
+### Co-citation Reference Table: 35 Nodes
+
+```{r}
+printTable(lista35)
+
+```
+
+
+
+Reference 40{data-icon="fa-area-chart" data-navmenu=Co-citation }
+===================================== 
+
+Column
+-------------------------------------
+
+### Co-citation reference Network: 40 Nodes
+```{r}
+
+net40 <- intellectualStructure("co-citation", "references",";",40 )
+lista40 <- listaIntellectualStructure(net40,40)
+
+```
+
+
+Column
+-------------------------------------
+
+### Co-citation Reference Table: 40 Nodes
+
+```{r}
+printTable(lista40)
+
+```
+
+
+
+Reference 45{data-icon="fa-area-chart" data-navmenu=Co-citation }
+===================================== 
+
+Column
+-------------------------------------
+
+### Co-citation reference Network: 45 Nodes
+```{r}
+
+net45 <- intellectualStructure("co-citation", "references",";",45 )
+lista45 <- listaIntellectualStructure(net45,45)
+
+```
+
+
+Column
+-------------------------------------
+
+### Co-citation Reference Table: 45 Nodes
+
+```{r}
+printTable(lista45)
+
+```
+
+
+
+Reference 50{data-icon="fa-area-chart" data-navmenu=Co-citation }
+===================================== 
+
+Column
+-------------------------------------
+
+### Co-citation reference Network: 50 Nodes
+```{r}
+
+net50 <- intellectualStructure("co-citation", "references",";",50 )
+lista50 <- listaIntellectualStructure(net50,50)
+
+```
+
+
+Column
+-------------------------------------
+
+### Co-citation Reference Table: 50 Nodes
+
+```{r}
+printTable(lista50)
+
+```
+
+
+Overall{data-icon="fa-area-chart" data-navmenu=Data }
+===================================== 
+
+Column
+-------------------------------------
+
+### Overall table
+
+```{r}
+
+  lista<-bind_rows(lista20,lista25,lista30,lista40,lista45,lista50) 
+  printTable(lista)
+ 
+
+```
+
+
+Important Information{data-icon="fa-area-chart" data-navmenu=Data }
+===================================== 
+
+Column {.tabset data-width=500}
+-------------------------------------
+
+### Influential papers
+```{r}
+
+  lista<-bind_rows(lista20,lista25,lista30,lista40,lista45,lista50) 
+  printTable(lista %>% count(REFERENCE) %>% arrange(desc(n)))
+
+```
+
+### Cluster Number
+```{r}
+
+  lista<-bind_rows(lista20,lista25,lista30,lista40,lista45,lista50) 
+  printTable(lista %>% count(CLUSTER,CLUSTER_NUMBER) %>% arrange(CLUSTER_NUMBER) %>% filter(n>=5))
+ 
+
+```
+
+
+
+Cluster 35{data-icon="fa-area-chart" data-navmenu=Data }
+===================================== 
+
+
+
+Column {.tabset data-width=500}
+-------------------------------------
+
+### 35 vs 30 No match
+```{r}
+ printTable( anti_join(lista35,lista30, by = "REFERENCE"))
+ 
+```
+
+### 35 vs 25 No match
+```{r}
+ printTable( anti_join(lista35,lista25, by = "REFERENCE"))
+ 
+```
+
+
+### 35 vs 20 No match
+```{r}
+ printTable( anti_join(lista35,lista20, by = "REFERENCE"))
+ 
+```
+
+
+
+WebOfScience Equation{data-icon="fa-area-chart" data-navmenu=Data }
+===================================== 
+
+Column {.tabset data-width=500}
+-------------------------------------
+
+### 20 Elements
+```{r}
+printTable(getEquation(lista20) %>% as.data.frame())
+
+```
+
+### 25 Elements
+```{r}
+printTable(getEquation(lista25) %>% as.data.frame())
+
+```
+
+
+### 30 Elements
+```{r}
+printTable(getEquation(lista30) %>% as.data.frame())
+```
+
+### 35 Elements
+```{r}
+printTable(getEquation(lista35) %>% as.data.frame())
+
+```
+
+
+### 40 Elements
+```{r}
+printTable(getEquation(lista40) %>% as.data.frame())
+
+```
+
+
+### 45 Elements
+```{r}
+printTable(getEquation(lista45) %>% as.data.frame())
+
+```
+
+
+### 50 Elements
+```{r}
+printTable(getEquation(lista50) %>% as.data.frame())
+
+```
